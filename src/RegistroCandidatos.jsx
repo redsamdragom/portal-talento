@@ -467,6 +467,7 @@ export default function RegistroCandidatos() {
   const [busquedaEmpleo, setBusquedaEmpleo] = useState("");
   const [categoriaEmpleo, setCategoriaEmpleo] = useState("");
   const [busquedaCategoria, setBusquedaCategoria] = useState("");
+  const [vacanteDetalle, setVacanteDetalle] = useState(null);
 
   const categoriasFiltradas = AREAS.filter((a) =>
     a.toLowerCase().includes(busquedaCategoria.trim().toLowerCase())
@@ -1698,11 +1699,15 @@ export default function RegistroCandidatos() {
                     {vacantesFiltradas.map((v) => (
                       <div
                         key={v.id}
-                        className="bg-white rounded-xl border border-stone-200 overflow-hidden hover:shadow-md rc-anim transition-shadow relative flex flex-col h-full"
+                        onClick={() => setVacanteDetalle(v)}
+                        className="bg-white rounded-xl border border-stone-200 overflow-hidden hover:shadow-md rc-anim transition-shadow relative flex flex-col h-full cursor-pointer"
                       >
                         {v.autorCorreo === sesion.correo && (
                           <button
-                            onClick={() => eliminarVacante(v.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              eliminarVacante(v.id);
+                            }}
                             className="absolute top-2 right-2 w-7 h-7 rounded-full bg-stone-900/70 text-white text-xs font-bold flex items-center justify-center hover:bg-red-600 rc-anim transition-colors"
                             title="Eliminar publicación"
                           >
@@ -1734,20 +1739,110 @@ export default function RegistroCandidatos() {
                           >
                             {v.salario || "A convenir"}
                           </p>
-                          <a
-                            href={`mailto:${v.autorCorreo}?subject=${encodeURIComponent(
-                              "Postulación: " + v.puesto
-                            )}`}
-                            className="mt-auto pt-2 block text-center px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 rc-anim transition-colors"
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setVacanteDetalle(v);
+                            }}
+                            className="mt-auto pt-2 block w-full text-center px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 rc-anim transition-colors"
                           >
                             Postularme
-                          </a>
+                          </button>
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
+
+              {/* ── Detalle de la vacante ── */}
+              {vacanteDetalle && (
+                <div
+                  className="fixed inset-0 bg-stone-900/60 flex items-center justify-center p-4 z-50"
+                  onClick={() => setVacanteDetalle(null)}
+                >
+                  <div
+                    className="bg-white rounded-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {vacanteDetalle.fotoUrl ? (
+                      <img
+                        src={vacanteDetalle.fotoUrl}
+                        alt={vacanteDetalle.empresa}
+                        className="w-full aspect-video object-cover"
+                      />
+                    ) : (
+                      <div className="w-full aspect-video bg-stone-100 flex items-center justify-center text-5xl">
+                        💼
+                      </div>
+                    )}
+
+                    <div className="p-6">
+                      <div className="flex items-start justify-between gap-3 mb-1">
+                        <h2 className="text-xl font-extrabold text-stone-900">
+                          {vacanteDetalle.puesto}
+                        </h2>
+                        <button
+                          onClick={() => setVacanteDetalle(null)}
+                          className="text-stone-400 hover:text-stone-700 text-sm font-semibold shrink-0"
+                        >
+                          ✕ Cerrar
+                        </button>
+                      </div>
+                      <p className="text-stone-600 mb-4">
+                        {vacanteDetalle.empresa}
+                      </p>
+
+                      <p
+                        className={`text-2xl font-extrabold mb-4 ${
+                          vacanteDetalle.salario
+                            ? "text-emerald-700"
+                            : "text-stone-400"
+                        }`}
+                      >
+                        {vacanteDetalle.salario || "Salario a convenir"}
+                      </p>
+
+                      <dl className="divide-y divide-stone-200 border border-stone-200 rounded-xl overflow-hidden mb-4">
+                        {[
+                          ["Ubicación", "📍 " + vacanteDetalle.ubicacion],
+                          ["Categoría", vacanteDetalle.area],
+                          ["Tipo de contrato", vacanteDetalle.tipoContrato],
+                          ["Publicado", vacanteDetalle.fecha],
+                        ].map(([k, v2]) => (
+                          <div
+                            key={k}
+                            className="grid grid-cols-[130px_1fr] gap-3 px-4 py-2.5"
+                          >
+                            <dt className="rc-mono uppercase text-[11px] text-stone-400 pt-0.5">
+                              {k}
+                            </dt>
+                            <dd className="text-sm text-stone-800 break-words">
+                              {v2}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+
+                      <p className="rc-mono uppercase text-[11px] text-stone-400 mb-1">
+                        Descripción
+                      </p>
+                      <p className="text-sm text-stone-700 mb-6 whitespace-pre-wrap">
+                        {vacanteDetalle.descripcion}
+                      </p>
+
+                      <a
+                        href={`mailto:${vacanteDetalle.autorCorreo}?subject=${encodeURIComponent(
+                          "Postulación: " + vacanteDetalle.puesto
+                        )}`}
+                        className="block text-center px-6 py-3 rounded-lg bg-emerald-600 text-white font-bold hover:bg-emerald-700 rc-anim transition-colors"
+                      >
+                        Postularme
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
