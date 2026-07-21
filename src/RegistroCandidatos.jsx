@@ -887,7 +887,7 @@ export default function RegistroCandidatos() {
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
             <p className="rc-mono uppercase text-xs text-emerald-700 font-medium mb-1">
-              Portal de talento
+              CAMARANON
             </p>
             <h1 className="text-3xl font-extrabold tracking-tight text-stone-900">
               Bienvenido de nuevo
@@ -982,7 +982,7 @@ export default function RegistroCandidatos() {
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
             <p className="rc-mono uppercase text-xs text-emerald-700 font-medium mb-1">
-              Portal de talento · Reclutador
+              CAMARANON · Reclutador
             </p>
             <h1 className="text-3xl font-extrabold tracking-tight text-stone-900">
               Acceso de reclutador
@@ -1790,7 +1790,7 @@ export default function RegistroCandidatos() {
           <header className="mb-6 flex items-end justify-between flex-wrap gap-3">
             <div>
               <p className="rc-mono uppercase text-xs text-emerald-700 font-medium mb-1">
-                Portal de talento · Reclutador
+                CAMARANON · Reclutador
               </p>
               <h1 className="text-3xl font-extrabold tracking-tight">
                 Bandeja de postulantes
@@ -2090,7 +2090,7 @@ export default function RegistroCandidatos() {
         <header className="mb-8 flex items-end justify-between flex-wrap gap-3">
           <div>
             <p className="rc-mono uppercase text-xs text-emerald-700 font-medium mb-1">
-              Portal de talento
+              CAMARANON
             </p>
             <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">
               Crea tu perfil de candidato

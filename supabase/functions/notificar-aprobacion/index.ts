@@ -30,13 +30,13 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "Portal de Talento <onboarding@resend.dev>",
+        from: "CAMARANON <onboarding@resend.dev>",
         to: [correo],
         subject: "¡Fuiste aceptado! 🎉",
         html: `
           <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
             <h2 style="color: #059669;">¡Felicidades${nombre ? ", " + nombre : ""}!</h2>
-            <p>Tu postulación en el <strong>Portal de Talento</strong> fue <strong>aprobada</strong>.</p>
+            <p>Tu postulación en <strong>CAMARANON</strong> fue <strong>aprobada</strong>.</p>
             <p>Un reclutador se pondrá en contacto contigo pronto para los siguientes pasos.</p>
             <p style="color: #78716c; font-size: 12px; margin-top: 24px;">Este es un correo automático, por favor no respondas a este mensaje.</p>
           </div>
