@@ -1698,7 +1698,7 @@ export default function RegistroCandidatos() {
                     {vacantesFiltradas.map((v) => (
                       <div
                         key={v.id}
-                        className="bg-white rounded-xl border border-stone-200 overflow-hidden hover:shadow-md rc-anim transition-shadow relative"
+                        className="bg-white rounded-xl border border-stone-200 overflow-hidden hover:shadow-md rc-anim transition-shadow relative flex flex-col h-full"
                       >
                         {v.autorCorreo === sesion.correo && (
                           <button
@@ -1720,7 +1720,7 @@ export default function RegistroCandidatos() {
                             💼
                           </div>
                         )}
-                        <div className="p-3">
+                        <div className="p-3 flex flex-col flex-1">
                           <p className="text-sm font-bold text-stone-900 truncate">
                             {v.puesto}
                           </p>
@@ -1738,7 +1738,7 @@ export default function RegistroCandidatos() {
                             href={`mailto:${v.autorCorreo}?subject=${encodeURIComponent(
                               "Postulación: " + v.puesto
                             )}`}
-                            className="mt-2 block text-center px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 rc-anim transition-colors"
+                            className="mt-auto pt-2 block text-center px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 rc-anim transition-colors"
                           >
                             Postularme
                           </a>
