@@ -194,6 +194,20 @@ const filaAVacante = (f) => ({
   fecha: formatearFecha(f.creado_en),
 });
 
+// Convierte una fila de la tabla "trabajos" de Supabase al formato que usa la UI
+const filaATrabajo = (f) => ({
+  id: f.id,
+  autorCorreo: f.autor_correo,
+  autorNombre: f.autor_nombre,
+  titulo: f.titulo,
+  categoria: f.categoria,
+  ubicacion: f.ubicacion,
+  precio: f.precio,
+  descripcion: f.descripcion,
+  fotoUrl: f.foto_url || "",
+  fecha: formatearFecha(f.creado_en),
+});
+
 // ─── Candidatos registrados (se llena con los registros reales) ─────
 const CANDIDATOS_DEMO = [];
 
@@ -574,6 +588,115 @@ export default function RegistroCandidatos() {
     return true;
   });
 
+  // ─── Trabajos (portafolio de trabajos ya realizados) ──────────────
+  const [trabajos, setTrabajos] = useState([]);
+  const [mostrarFormTrabajo, setMostrarFormTrabajo] = useState(false);
+  const [nuevoTrabajo, setNuevoTrabajo] = useState({
+    titulo: "",
+    categoria: "",
+    ubicacion: "",
+    precio: "",
+    descripcion: "",
+    fotoUrl: "",
+  });
+  const [erroresTrabajo, setErroresTrabajo] = useState({});
+  const [busquedaTrabajo, setBusquedaTrabajo] = useState("");
+  const [categoriaTrabajo, setCategoriaTrabajo] = useState("");
+  const [publicandoTrabajo, setPublicandoTrabajo] = useState(false);
+
+  const setTrabajoCampo = (campo, valor) => {
+    setNuevoTrabajo((t) => ({ ...t, [campo]: valor }));
+    setErroresTrabajo((e) => ({ ...e, [campo]: undefined }));
+  };
+
+  const manejarFotoTrabajo = async (file) => {
+    if (!file) return;
+    try {
+      const dataUrl = await comprimirImagen(file);
+      setTrabajoCampo("fotoUrl", dataUrl);
+    } catch {
+      setErroresTrabajo((e) => ({
+        ...e,
+        foto: "No se pudo procesar la imagen. Intenta con otra foto.",
+      }));
+    }
+  };
+
+  const validarTrabajo = () => {
+    const e = {};
+    if (nuevoTrabajo.titulo.trim().length < 5)
+      e.titulo = "Escribe un título más descriptivo (mínimo 5 caracteres)";
+    if (!nuevoTrabajo.categoria) e.categoria = "Selecciona una categoría";
+    if (nuevoTrabajo.ubicacion.trim().length < 2)
+      e.ubicacion = "Indica la ubicación";
+    if (nuevoTrabajo.precio.trim().length === 0)
+      e.precio = "Indica un precio";
+    if (nuevoTrabajo.descripcion.trim().length < 20)
+      e.descripcion = "Cuéntanos más sobre este trabajo (mínimo 20 caracteres)";
+    if (!nuevoTrabajo.fotoUrl) e.foto = "Sube al menos una foto del trabajo";
+    setErroresTrabajo(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const publicarTrabajo = async () => {
+    if (!validarTrabajo()) return;
+    setPublicandoTrabajo(true);
+    const { data, error } = await supabase
+      .from("trabajos")
+      .insert({
+        autor_correo: sesion.correo,
+        autor_nombre: sesion.nombre,
+        titulo: nuevoTrabajo.titulo.trim(),
+        categoria: nuevoTrabajo.categoria,
+        ubicacion: nuevoTrabajo.ubicacion.trim(),
+        precio: nuevoTrabajo.precio.trim(),
+        descripcion: nuevoTrabajo.descripcion.trim(),
+        foto_url: nuevoTrabajo.fotoUrl,
+      })
+      .select()
+      .single();
+    setPublicandoTrabajo(false);
+
+    if (error) {
+      setErroresTrabajo((e) => ({
+        ...e,
+        general: "No se pudo publicar el trabajo. Intenta de nuevo.",
+      }));
+      return;
+    }
+
+    setTrabajos((t) => [filaATrabajo(data), ...t]);
+    setNuevoTrabajo({
+      titulo: "",
+      categoria: "",
+      ubicacion: "",
+      precio: "",
+      descripcion: "",
+      fotoUrl: "",
+    });
+    setErroresTrabajo({});
+    setMostrarFormTrabajo(false);
+  };
+
+  const eliminarTrabajo = async (id) => {
+    setTrabajos((t) => t.filter((x) => x.id !== id));
+    await supabase.from("trabajos").delete().eq("id", id);
+  };
+
+  const trabajosFiltrados = trabajos.filter((t) => {
+    if (soloMisPublicaciones && t.autorCorreo !== sesion?.correo)
+      return false;
+    const q = busquedaTrabajo.trim().toLowerCase();
+    if (
+      q &&
+      !t.titulo.toLowerCase().includes(q) &&
+      !t.descripcion.toLowerCase().includes(q)
+    )
+      return false;
+    if (categoriaTrabajo && t.categoria !== categoriaTrabajo) return false;
+    return true;
+  });
+
   // ─── Panel de administrador ───────────────────────────────────────
   const [candidatos, setCandidatos] = useState(CANDIDATOS_DEMO);
   const [filtro, setFiltro] = useState({
@@ -598,6 +721,12 @@ export default function RegistroCandidatos() {
         .select("*")
         .order("creado_en", { ascending: false });
       if (filasCandidatos) setCandidatos(filasCandidatos.map(filaACandidato));
+
+      const { data: filasTrabajos } = await supabase
+        .from("trabajos")
+        .select("*")
+        .order("creado_en", { ascending: false });
+      if (filasTrabajos) setTrabajos(filasTrabajos.map(filaATrabajo));
     };
     cargarDatos();
   }, []);
@@ -1061,7 +1190,9 @@ export default function RegistroCandidatos() {
         {estilos}
         <div
           className={`mx-auto ${
-            pestana === "empleos" ? "max-w-7xl" : "max-w-lg"
+            pestana === "empleos" || pestana === "trabajos"
+              ? "max-w-7xl"
+              : "max-w-lg"
           }`}
         >
           {/* ── Encabezado con pestañas ── */}
@@ -1086,6 +1217,16 @@ export default function RegistroCandidatos() {
                 }`}
               >
                 💼 Empleos
+              </button>
+              <button
+                onClick={() => setPestana("trabajos")}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold rc-anim transition-colors ${
+                  pestana === "trabajos"
+                    ? "bg-stone-900 text-white"
+                    : "text-stone-500 hover:bg-stone-100"
+                }`}
+              >
+                🖼️ Trabajos
               </button>
             </div>
 
@@ -1758,6 +1899,282 @@ export default function RegistroCandidatos() {
                         <p className="rc-mono uppercase text-[10px] text-stone-400 px-4 pb-3">
                           {AREAS.includes(v.area) ? v.area : ""} · {v.fecha}
                         </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── Pestaña: Trabajos (portafolio) ── */}
+          {pestana === "trabajos" && (
+            <div className="grid md:grid-cols-[260px_1fr] gap-5 items-start">
+              {/* ── Barra lateral ── */}
+              <aside className="bg-white rounded-2xl border border-stone-200 p-4 md:sticky md:top-6">
+                <h1 className="text-xl font-extrabold text-stone-900 mb-4">
+                  Trabajos
+                </h1>
+                <input
+                  value={busquedaTrabajo}
+                  onChange={(e) => setBusquedaTrabajo(e.target.value)}
+                  placeholder="Buscar trabajos…"
+                  className={claseInput(false) + " mb-4"}
+                />
+
+                <button
+                  onClick={() => {
+                    setMostrarFormTrabajo((v) => !v);
+                    setErroresTrabajo({});
+                  }}
+                  className="w-full mb-5 px-4 py-2.5 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 rc-anim transition-colors"
+                >
+                  {mostrarFormTrabajo ? "✕ Cancelar" : "+ Publicar trabajo"}
+                </button>
+
+                <nav className="space-y-1 mb-5">
+                  <button
+                    onClick={() => setSoloMisPublicaciones(false)}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-semibold rc-anim transition-colors ${
+                      !soloMisPublicaciones
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "text-stone-600 hover:bg-stone-100"
+                    }`}
+                  >
+                    <span className="text-base">🖼️</span> Explorar todo
+                  </button>
+                  <button
+                    onClick={() => setSoloMisPublicaciones(true)}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-semibold rc-anim transition-colors ${
+                      soloMisPublicaciones
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "text-stone-600 hover:bg-stone-100"
+                    }`}
+                  >
+                    <span className="text-base">📋</span> Mis publicaciones
+                  </button>
+                </nav>
+
+                <div className="border-t border-stone-200 pt-4">
+                  <p className="rc-mono uppercase text-[11px] text-stone-400 mb-2 px-3">
+                    Categorías
+                  </p>
+                  <div className="space-y-0.5 max-h-64 overflow-y-auto">
+                    <button
+                      onClick={() => setCategoriaTrabajo("")}
+                      className={`w-full text-left px-3 py-1.5 rounded-lg text-sm rc-anim transition-colors ${
+                        categoriaTrabajo === ""
+                          ? "bg-emerald-50 text-emerald-700 font-semibold"
+                          : "text-stone-600 hover:bg-stone-100"
+                      }`}
+                    >
+                      Todas
+                    </button>
+                    {AREAS.map((a) => (
+                      <button
+                        key={a}
+                        onClick={() => setCategoriaTrabajo(a)}
+                        className={`w-full text-left px-3 py-1.5 rounded-lg text-sm rc-anim transition-colors ${
+                          categoriaTrabajo === a
+                            ? "bg-emerald-50 text-emerald-700 font-semibold"
+                            : "text-stone-600 hover:bg-stone-100"
+                        }`}
+                      >
+                        {a}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </aside>
+
+              {/* ── Contenido principal ── */}
+              <div>
+                {mostrarFormTrabajo && (
+                  <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6 mb-5">
+                    <h2 className="text-lg font-bold mb-4">
+                      Publicar un trabajo
+                    </h2>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+                      <Campo etiqueta="Título" error={erroresTrabajo.titulo}>
+                        <input
+                          value={nuevoTrabajo.titulo}
+                          onChange={(e) =>
+                            setTrabajoCampo("titulo", e.target.value)
+                          }
+                          placeholder="Ej. Remodelación de cocina"
+                          className={claseInput(erroresTrabajo.titulo)}
+                        />
+                      </Campo>
+                      <Campo
+                        etiqueta="Categoría"
+                        error={erroresTrabajo.categoria}
+                      >
+                        <select
+                          value={nuevoTrabajo.categoria}
+                          onChange={(e) =>
+                            setTrabajoCampo("categoria", e.target.value)
+                          }
+                          className={claseInput(erroresTrabajo.categoria)}
+                        >
+                          <option value="">Selecciona una categoría</option>
+                          {AREAS.map((a) => (
+                            <option key={a} value={a}>
+                              {a}
+                            </option>
+                          ))}
+                        </select>
+                      </Campo>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+                      <Campo etiqueta="Ubicación" error={erroresTrabajo.ubicacion}>
+                        <input
+                          value={nuevoTrabajo.ubicacion}
+                          onChange={(e) =>
+                            setTrabajoCampo("ubicacion", e.target.value)
+                          }
+                          placeholder="Ej. Ciudad de Panamá"
+                          className={claseInput(erroresTrabajo.ubicacion)}
+                        />
+                      </Campo>
+                      <Campo etiqueta="Precio" error={erroresTrabajo.precio}>
+                        <input
+                          value={nuevoTrabajo.precio}
+                          onChange={(e) =>
+                            setTrabajoCampo("precio", e.target.value)
+                          }
+                          placeholder="Ej. 350"
+                          className={claseInput(erroresTrabajo.precio)}
+                        />
+                      </Campo>
+                    </div>
+                    <Campo
+                      etiqueta="Descripción"
+                      error={erroresTrabajo.descripcion}
+                    >
+                      <textarea
+                        rows={4}
+                        value={nuevoTrabajo.descripcion}
+                        onChange={(e) =>
+                          setTrabajoCampo("descripcion", e.target.value)
+                        }
+                        placeholder="Cuéntale a la comunidad en qué consistió este trabajo…"
+                        className={
+                          claseInput(erroresTrabajo.descripcion) + " resize-y"
+                        }
+                      />
+                    </Campo>
+                    <div className="mb-2">
+                      <span className="block text-sm font-semibold text-stone-700 mb-1.5">
+                        Foto del trabajo
+                      </span>
+                      {nuevoTrabajo.fotoUrl ? (
+                        <div className="flex items-center gap-4">
+                          <img
+                            src={nuevoTrabajo.fotoUrl}
+                            alt="Vista previa del trabajo"
+                            className="w-24 h-24 object-cover rounded-lg border border-stone-200"
+                          />
+                          <button
+                            onClick={() => setTrabajoCampo("fotoUrl", "")}
+                            className="text-sm text-stone-500 hover:text-red-600"
+                          >
+                            Quitar foto
+                          </button>
+                        </div>
+                      ) : (
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={(e) =>
+                            manejarFotoTrabajo(e.target.files[0])
+                          }
+                          className="text-sm text-stone-600"
+                        />
+                      )}
+                      {erroresTrabajo.foto && (
+                        <p className="mt-1.5 text-sm text-red-600">
+                          {erroresTrabajo.foto}
+                        </p>
+                      )}
+                    </div>
+                    {erroresTrabajo.general && (
+                      <p className="mb-2 text-sm text-red-600">
+                        {erroresTrabajo.general}
+                      </p>
+                    )}
+                    <button
+                      onClick={publicarTrabajo}
+                      disabled={publicandoTrabajo}
+                      className="w-full mt-3 px-6 py-3 rounded-lg bg-amber-400 text-stone-900 font-bold hover:bg-amber-500 disabled:opacity-60 rc-anim transition-colors"
+                    >
+                      {publicandoTrabajo ? "Publicando…" : "Publicar trabajo"}
+                    </button>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-lg font-bold text-stone-900">
+                    {soloMisPublicaciones
+                      ? "Mis publicaciones"
+                      : categoriaTrabajo
+                      ? categoriaTrabajo
+                      : "Trabajos destacados"}
+                  </h2>
+                  {soloMisPublicaciones && (
+                    <button
+                      onClick={() => setSoloMisPublicaciones(false)}
+                      className="text-sm text-emerald-700 font-semibold hover:underline"
+                    >
+                      Ver todas
+                    </button>
+                  )}
+                </div>
+
+                {/* ── Grilla de trabajos ── */}
+                {trabajosFiltrados.length === 0 ? (
+                  <div className="bg-white rounded-xl border border-dashed border-stone-300 p-14 text-center text-stone-400">
+                    {trabajos.length === 0
+                      ? "Todavía no hay trabajos publicados. ¡Sé el primero!"
+                      : "No hay trabajos que coincidan con estos filtros."}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {trabajosFiltrados.map((t) => (
+                      <div
+                        key={t.id}
+                        className="bg-white rounded-xl border border-stone-200 overflow-hidden hover:shadow-md rc-anim transition-shadow relative"
+                      >
+                        {t.autorCorreo === sesion.correo && (
+                          <button
+                            onClick={() => eliminarTrabajo(t.id)}
+                            className="absolute top-2 right-2 w-7 h-7 rounded-full bg-stone-900/70 text-white text-xs font-bold flex items-center justify-center hover:bg-red-600 rc-anim transition-colors"
+                            title="Eliminar publicación"
+                          >
+                            ✕
+                          </button>
+                        )}
+                        {t.fotoUrl ? (
+                          <img
+                            src={t.fotoUrl}
+                            alt={t.titulo}
+                            className="w-full aspect-square object-cover"
+                          />
+                        ) : (
+                          <div className="w-full aspect-square bg-stone-100 flex items-center justify-center text-4xl">
+                            🖼️
+                          </div>
+                        )}
+                        <div className="p-3">
+                          <p className="text-lg font-extrabold text-stone-900">
+                            {t.precio} $
+                          </p>
+                          <p className="text-sm text-stone-800 truncate">
+                            {t.titulo}
+                          </p>
+                          <p className="text-xs text-stone-500 truncate mt-0.5">
+                            {t.ubicacion}
+                          </p>
+                        </div>
                       </div>
                     ))}
                   </div>
