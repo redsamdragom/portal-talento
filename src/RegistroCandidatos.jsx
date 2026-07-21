@@ -1721,18 +1721,18 @@ export default function RegistroCandidatos() {
                           </div>
                         )}
                         <div className="p-3">
-                          <p
-                            className={`text-lg font-extrabold ${
-                              v.salario ? "text-stone-900" : "text-stone-400"
-                            }`}
-                          >
-                            {v.salario || "A convenir"}
-                          </p>
-                          <p className="text-sm text-stone-800 truncate">
+                          <p className="text-sm font-bold text-stone-900 truncate">
                             {v.puesto}
                           </p>
                           <p className="text-xs text-stone-500 truncate mt-0.5">
                             {v.empresa} · 📍 {v.ubicacion}
+                          </p>
+                          <p
+                            className={`text-lg font-extrabold mt-1.5 ${
+                              v.salario ? "text-stone-900" : "text-stone-400"
+                            }`}
+                          >
+                            {v.salario || "A convenir"}
                           </p>
                           <a
                             href={`mailto:${v.autorCorreo}?subject=${encodeURIComponent(
