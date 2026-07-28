@@ -140,7 +140,7 @@ const PREFIJOS_ESPECIALES = {
 
 // Detecta la circunscripción a partir de la cédula (ej. "8-123-4567" → Panamá)
 const detectarProvincia = (cedula) => {
-  const c = cedula.trim().toUpperCase();
+  const c = (cedula || "").trim().toUpperCase();
   if (!c) return null;
   const prefijoEspecial = Object.keys(PREFIJOS_ESPECIALES).find((p) =>
     new RegExp(`^${p}(-|\\d|$)`).test(c)
@@ -633,7 +633,7 @@ export default function RegistroCandidatos() {
     if (
       q &&
       !c.nombre.toLowerCase().includes(q) &&
-      !c.cedula.toLowerCase().includes(q) &&
+      !(c.cedula || "").toLowerCase().includes(q) &&
       !c.correo.toLowerCase().includes(q)
     )
       return false;
