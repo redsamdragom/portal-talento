@@ -55,3 +55,25 @@ create policy "Cualquiera puede publicar una vacante"
 
 create policy "Cualquiera puede borrar vacantes"
   on vacantes for delete using (true);
+
+-- ─── Postulaciones a vacantes ─────────────────────────────────────────
+create table if not exists postulaciones (
+  id uuid primary key default gen_random_uuid(),
+  vacante_id uuid not null references vacantes(id) on delete cascade,
+  candidato_id uuid not null references candidatos(id) on delete cascade,
+  candidato_nombre text not null,
+  candidato_correo text not null,
+  creado_en timestamptz not null default now(),
+  unique (vacante_id, candidato_id)
+);
+
+alter table postulaciones enable row level security;
+
+create policy "Cualquiera puede leer postulaciones"
+  on postulaciones for select using (true);
+
+create policy "Cualquiera puede postularse a una vacante"
+  on postulaciones for insert with check (true);
+
+create policy "Cualquiera puede borrar una postulación"
+  on postulaciones for delete using (true);

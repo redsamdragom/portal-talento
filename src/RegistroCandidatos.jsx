@@ -194,6 +194,16 @@ const filaAVacante = (f) => ({
   fecha: formatearFecha(f.creado_en),
 });
 
+// Convierte una fila de la tabla "postulaciones" de Supabase al formato que usa la UI
+const filaAPostulacion = (f) => ({
+  id: f.id,
+  vacanteId: f.vacante_id,
+  candidatoId: f.candidato_id,
+  candidatoNombre: f.candidato_nombre,
+  candidatoCorreo: f.candidato_correo,
+  fecha: formatearFecha(f.creado_en),
+});
+
 // ─── Candidatos registrados (se llena con los registros reales) ─────
 const CANDIDATOS_DEMO = [];
 
@@ -244,7 +254,7 @@ const NOTIFICACIONES_DEMO = [
 
 const ESTADOS = {
   pendiente: { texto: "Pendiente", clase: "bg-amber-100 text-amber-800 border-amber-300" },
-  aprobado: { texto: "Aprobado", clase: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+  aprobado: { texto: "Aprobado", clase: "bg-green-100 text-green-800 border-green-300" },
   rechazado: { texto: "Rechazado", clase: "bg-red-100 text-red-700 border-red-300" },
 };
 
@@ -468,6 +478,14 @@ export default function RegistroCandidatos() {
   const [categoriaEmpleo, setCategoriaEmpleo] = useState("");
   const [busquedaCategoria, setBusquedaCategoria] = useState("");
   const [vacanteDetalle, setVacanteDetalle] = useState(null);
+  const [postulaciones, setPostulaciones] = useState([]);
+  const [postulando, setPostulando] = useState(false);
+  const [errorPostulacion, setErrorPostulacion] = useState("");
+
+  // Limpia el error de postulación al cambiar de vacante en el detalle
+  useEffect(() => {
+    setErrorPostulacion("");
+  }, [vacanteDetalle?.id]);
 
   const categoriasFiltradas = AREAS.filter((a) =>
     a.toLowerCase().includes(busquedaCategoria.trim().toLowerCase())
@@ -575,6 +593,53 @@ export default function RegistroCandidatos() {
     return true;
   });
 
+  const postulantesDe = (vacanteId) =>
+    postulaciones.filter((p) => p.vacanteId === vacanteId);
+
+  const yaPostulado = (vacanteId) =>
+    sesion?.id
+      ? postulaciones.some(
+          (p) => p.vacanteId === vacanteId && p.candidatoId === sesion.id
+        )
+      : false;
+
+  // ─── Postularse a una vacante (crea un registro real, no solo un correo) ─
+  const postularseAVacante = async (vacante) => {
+    if (!sesion?.id || yaPostulado(vacante.id)) return;
+    setErrorPostulacion("");
+    setPostulando(true);
+    const { data, error } = await supabase
+      .from("postulaciones")
+      .insert({
+        vacante_id: vacante.id,
+        candidato_id: sesion.id,
+        candidato_nombre: sesion.nombre,
+        candidato_correo: sesion.correo,
+      })
+      .select()
+      .single();
+    setPostulando(false);
+
+    if (error) {
+      setErrorPostulacion(
+        error.code === "23505"
+          ? "Ya te habías postulado a esta vacante."
+          : "No se pudo enviar tu postulación. Intenta de nuevo."
+      );
+      return;
+    }
+
+    setPostulaciones((p) => [...p, filaAPostulacion(data)]);
+    supabase.functions.invoke("notificar-postulacion", {
+      body: {
+        correoEmpleador: vacante.autorCorreo,
+        puesto: vacante.puesto,
+        candidatoNombre: sesion.nombre,
+        candidatoCorreo: sesion.correo,
+      },
+    });
+  };
+
   // ─── Panel de administrador ───────────────────────────────────────
   const [candidatos, setCandidatos] = useState(CANDIDATOS_DEMO);
   const [filtro, setFiltro] = useState({
@@ -599,6 +664,13 @@ export default function RegistroCandidatos() {
         .select("*")
         .order("creado_en", { ascending: false });
       if (filasCandidatos) setCandidatos(filasCandidatos.map(filaACandidato));
+
+      const { data: filasPostulaciones } = await supabase
+        .from("postulaciones")
+        .select("*")
+        .order("creado_en", { ascending: false });
+      if (filasPostulaciones)
+        setPostulaciones(filasPostulaciones.map(filaAPostulacion));
     };
     cargarDatos();
   }, []);
@@ -862,9 +934,9 @@ export default function RegistroCandidatos() {
 
   const estilos = (
     <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Archivo+Narrow:wght@500&display=swap');
-      .rc-display { font-family: 'Archivo', system-ui, sans-serif; }
-      .rc-mono { font-family: 'Archivo Narrow', system-ui, sans-serif; letter-spacing: 0.08em; }
+      .rc-display { font-family: 'JetBrains Mono', ui-monospace, monospace; letter-spacing: -0.02em; }
+      .rc-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; letter-spacing: -0.033em; }
+      .rc-serif { font-family: 'Source Serif 4', ui-serif, Georgia, serif; font-weight: 400 !important; letter-spacing: -0.02em; }
       @media (prefers-reduced-motion: reduce) { .rc-anim { transition: none !important; } }
     `}</style>
   );
@@ -890,7 +962,7 @@ export default function RegistroCandidatos() {
             <p className="rc-mono uppercase text-xs text-emerald-700 font-medium mb-1">
               Camaron
             </p>
-            <h1 className="text-3xl font-extrabold tracking-tight text-stone-900">
+            <h1 className="rc-serif text-3xl tracking-tight text-stone-900">
               Bienvenido de nuevo
             </h1>
             <p className="text-stone-500 mt-2">
@@ -898,7 +970,7 @@ export default function RegistroCandidatos() {
             </p>
           </div>
 
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-8">
+          <div className="bg-white rounded-2xl border border-stone-200 p-8">
             <Campo etiqueta="Correo electrónico">
               <input
                 type="email"
@@ -933,7 +1005,7 @@ export default function RegistroCandidatos() {
 
             <button
               onClick={iniciarSesion}
-              className="w-full px-6 py-3 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 rc-anim transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+              className="w-full px-6 py-3 rounded-full bg-emerald-600 text-white font-semibold hover:bg-emerald-700 rc-anim transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
             >
               Iniciar sesión
             </button>
@@ -948,7 +1020,7 @@ export default function RegistroCandidatos() {
 
             <button
               onClick={irARegistro}
-              className="w-full px-6 py-3 rounded-lg bg-amber-400 text-stone-900 font-bold hover:bg-amber-500 rc-anim transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+              className="w-full px-6 py-3 rounded-full bg-stone-900 text-white font-bold hover:bg-stone-700 rc-anim transition-colors focus:outline-none focus:ring-2 focus:ring-stone-900 focus:ring-offset-2"
             >
               Crear una cuenta nueva
             </button>
@@ -985,7 +1057,7 @@ export default function RegistroCandidatos() {
             <p className="rc-mono uppercase text-xs text-emerald-700 font-medium mb-1">
               Camaron · Reclutador
             </p>
-            <h1 className="text-3xl font-extrabold tracking-tight text-stone-900">
+            <h1 className="rc-serif text-3xl tracking-tight text-stone-900">
               Acceso de reclutador
             </h1>
             <p className="text-stone-500 mt-2">
@@ -994,7 +1066,7 @@ export default function RegistroCandidatos() {
             </p>
           </div>
 
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-8">
+          <div className="bg-white rounded-2xl border border-stone-200 p-8">
             <Campo etiqueta="Correo electrónico">
               <input
                 type="email"
@@ -1034,7 +1106,7 @@ export default function RegistroCandidatos() {
 
             <button
               onClick={iniciarSesionReclutador}
-              className="w-full px-6 py-3 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 rc-anim transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+              className="w-full px-6 py-3 rounded-full bg-emerald-600 text-white font-semibold hover:bg-emerald-700 rc-anim transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
             >
               Entrar al panel
             </button>
@@ -1067,10 +1139,10 @@ export default function RegistroCandidatos() {
         >
           {/* ── Encabezado con pestañas ── */}
           <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
-            <div className="inline-flex gap-1 bg-white rounded-xl border border-stone-200 p-1.5">
+            <div className="inline-flex gap-1 bg-white rounded-full border border-stone-200 p-1.5">
               <button
                 onClick={() => setPestana("perfil")}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold rc-anim transition-colors ${
+                className={`px-4 py-2 rounded-full text-sm font-semibold rc-anim transition-colors ${
                   pestana === "perfil"
                     ? "bg-stone-900 text-white"
                     : "text-stone-500 hover:bg-stone-100"
@@ -1080,7 +1152,7 @@ export default function RegistroCandidatos() {
               </button>
               <button
                 onClick={() => setPestana("empleos")}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold rc-anim transition-colors ${
+                className={`px-4 py-2 rounded-full text-sm font-semibold rc-anim transition-colors ${
                   pestana === "empleos"
                     ? "bg-stone-900 text-white"
                     : "text-stone-500 hover:bg-stone-100"
@@ -1142,7 +1214,7 @@ export default function RegistroCandidatos() {
                 {mostrarNotificaciones && (
                   <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl border border-stone-200 shadow-lg overflow-hidden z-20">
                     <div className="px-4 pt-3 pb-2">
-                      <h3 className="text-lg font-extrabold text-stone-900">
+                      <h3 className="rc-serif text-lg text-stone-900">
                         Notificaciones
                       </h3>
                     </div>
@@ -1287,7 +1359,7 @@ export default function RegistroCandidatos() {
                           inputFotoPerfil.current?.click();
                           setMostrarMenuPerfil(false);
                         }}
-                        className="w-full mt-2 px-3 py-2 rounded-lg bg-stone-100 hover:bg-stone-200 text-sm font-semibold text-stone-700 rc-anim transition-colors"
+                        className="w-full mt-2 px-3 py-2 rounded-full bg-stone-100 hover:bg-stone-200 text-sm font-semibold text-stone-700 rc-anim transition-colors"
                       >
                         🖼️ Cambiar foto de perfil
                       </button>
@@ -1354,13 +1426,13 @@ export default function RegistroCandidatos() {
 
           {/* ── Pestaña: Mi perfil ── */}
           {pestana === "perfil" && (
-            <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
               <div className="bg-stone-900 text-white px-8 py-6 flex items-center justify-between">
                 <div>
                   <p className="rc-mono uppercase text-[11px] text-emerald-400">
                     Sesión iniciada
                   </p>
-                  <h1 className="text-xl font-bold">Hola, {sesion.nombre} 👋</h1>
+                  <h1 className="rc-serif text-xl">Hola, {sesion.nombre} 👋</h1>
                 </div>
                 <button
                   onClick={() => inputFotoPerfil.current?.click()}
@@ -1431,7 +1503,7 @@ export default function RegistroCandidatos() {
             <div className="grid md:grid-cols-[260px_1fr] gap-5 items-start">
               {/* ── Barra lateral ── */}
               <aside className="bg-white rounded-2xl border border-stone-200 p-4 md:sticky md:top-6">
-                <h1 className="text-xl font-extrabold text-stone-900 mb-4">
+                <h1 className="rc-serif text-xl text-stone-900 mb-4">
                   Empleos
                 </h1>
 
@@ -1440,7 +1512,7 @@ export default function RegistroCandidatos() {
                     setMostrarFormVacante((v) => !v);
                     setErroresVacante({});
                   }}
-                  className="w-full mb-5 px-4 py-2.5 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 rc-anim transition-colors"
+                  className="w-full mb-5 px-4 py-2.5 rounded-full bg-emerald-600 text-white font-semibold hover:bg-emerald-700 rc-anim transition-colors"
                 >
                   {mostrarFormVacante ? "✕ Cancelar" : "+ Publicar vacante"}
                 </button>
@@ -1448,7 +1520,7 @@ export default function RegistroCandidatos() {
                 <nav className="space-y-1 mb-5">
                   <button
                     onClick={() => setSoloMisPublicaciones(false)}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-semibold rc-anim transition-colors ${
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-full text-sm font-semibold rc-anim transition-colors ${
                       !soloMisPublicaciones
                         ? "bg-emerald-50 text-emerald-700"
                         : "text-stone-600 hover:bg-stone-100"
@@ -1458,7 +1530,7 @@ export default function RegistroCandidatos() {
                   </button>
                   <button
                     onClick={() => setSoloMisPublicaciones(true)}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-semibold rc-anim transition-colors ${
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-full text-sm font-semibold rc-anim transition-colors ${
                       soloMisPublicaciones
                         ? "bg-emerald-50 text-emerald-700"
                         : "text-stone-600 hover:bg-stone-100"
@@ -1484,7 +1556,7 @@ export default function RegistroCandidatos() {
                     {busquedaCategoria === "" && (
                       <button
                         onClick={() => setCategoriaEmpleo("")}
-                        className={`w-full text-left px-3 py-1.5 rounded-lg text-sm rc-anim transition-colors ${
+                        className={`w-full text-left px-3 py-1.5 rounded-full text-sm rc-anim transition-colors ${
                           categoriaEmpleo === ""
                             ? "bg-emerald-50 text-emerald-700 font-semibold"
                             : "text-stone-600 hover:bg-stone-100"
@@ -1502,7 +1574,7 @@ export default function RegistroCandidatos() {
                         <button
                           key={a}
                           onClick={() => setCategoriaEmpleo(a)}
-                          className={`w-full text-left px-3 py-1.5 rounded-lg text-sm rc-anim transition-colors ${
+                          className={`w-full text-left px-3 py-1.5 rounded-full text-sm rc-anim transition-colors ${
                             categoriaEmpleo === a
                               ? "bg-emerald-50 text-emerald-700 font-semibold"
                               : "text-stone-600 hover:bg-stone-100"
@@ -1519,8 +1591,8 @@ export default function RegistroCandidatos() {
               {/* ── Contenido principal ── */}
               <div>
                 {mostrarFormVacante && (
-                  <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6 mb-5">
-                    <h2 className="text-lg font-bold mb-4">
+                  <div className="bg-white rounded-2xl border border-stone-200 p-6 mb-5">
+                    <h2 className="rc-serif text-lg mb-4">
                       Publicar una vacante
                     </h2>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
@@ -1662,7 +1734,7 @@ export default function RegistroCandidatos() {
                     <button
                       onClick={publicarVacante}
                       disabled={publicandoVacante}
-                      className="w-full mt-3 px-6 py-3 rounded-lg bg-amber-400 text-stone-900 font-bold hover:bg-amber-500 disabled:opacity-60 rc-anim transition-colors"
+                      className="w-full mt-3 px-6 py-3 rounded-full bg-stone-900 text-white font-bold hover:bg-stone-700 disabled:opacity-60 rc-anim transition-colors"
                     >
                       {publicandoVacante ? "Publicando…" : "Publicar vacante"}
                     </button>
@@ -1670,7 +1742,7 @@ export default function RegistroCandidatos() {
                 )}
 
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-lg font-bold text-stone-900">
+                  <h2 className="rc-serif text-lg text-stone-900">
                     {soloMisPublicaciones
                       ? "Mis publicaciones"
                       : categoriaEmpleo
@@ -1696,61 +1768,73 @@ export default function RegistroCandidatos() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {vacantesFiltradas.map((v) => (
-                      <div
-                        key={v.id}
-                        onClick={() => setVacanteDetalle(v)}
-                        className="bg-white rounded-xl border border-stone-200 overflow-hidden hover:shadow-md rc-anim transition-shadow relative flex flex-col h-full cursor-pointer"
-                      >
-                        {v.autorCorreo === sesion.correo && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              eliminarVacante(v.id);
-                            }}
-                            className="absolute top-2 right-2 w-7 h-7 rounded-full bg-stone-900/70 text-white text-xs font-bold flex items-center justify-center hover:bg-red-600 rc-anim transition-colors"
-                            title="Eliminar publicación"
-                          >
-                            ✕
-                          </button>
-                        )}
-                        {v.fotoUrl ? (
-                          <img
-                            src={v.fotoUrl}
-                            alt={v.empresa}
-                            className="w-full aspect-square object-cover"
-                          />
-                        ) : (
-                          <div className="w-full aspect-square bg-stone-100 flex items-center justify-center text-4xl">
-                            💼
+                    {vacantesFiltradas.map((v) => {
+                      const esPropia = v.autorCorreo === sesion.correo;
+                      const postulado = !esPropia && yaPostulado(v.id);
+                      return (
+                        <div
+                          key={v.id}
+                          onClick={() => setVacanteDetalle(v)}
+                          className="bg-white rounded-card border border-stone-200 overflow-hidden hover:border-stone-400 rc-anim transition-colors relative flex flex-col h-full cursor-pointer"
+                        >
+                          {esPropia && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                eliminarVacante(v.id);
+                              }}
+                              className="absolute top-2 right-2 w-7 h-7 rounded-full bg-stone-900/70 text-white text-xs font-bold flex items-center justify-center hover:bg-red-600 rc-anim transition-colors"
+                              title="Eliminar publicación"
+                            >
+                              ✕
+                            </button>
+                          )}
+                          {v.fotoUrl ? (
+                            <img
+                              src={v.fotoUrl}
+                              alt={v.empresa}
+                              className="w-full aspect-square object-cover"
+                            />
+                          ) : (
+                            <div className="w-full aspect-square bg-stone-100 flex items-center justify-center text-4xl">
+                              💼
+                            </div>
+                          )}
+                          <div className="p-3 flex flex-col flex-1">
+                            <p className="text-sm font-bold text-stone-900 truncate">
+                              {v.puesto}
+                            </p>
+                            <p className="text-xs text-stone-500 truncate mt-0.5">
+                              {v.empresa} · 📍 {v.ubicacion}
+                            </p>
+                            <p
+                              className={`text-lg font-extrabold mt-1.5 ${
+                                v.salario ? "text-stone-900" : "text-stone-400"
+                              }`}
+                            >
+                              {v.salario || "A convenir"}
+                            </p>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setVacanteDetalle(v);
+                              }}
+                              className={`mt-auto pt-2 block w-full text-center px-3 py-1.5 rounded-full text-xs font-semibold rc-anim transition-colors ${
+                                esPropia || postulado
+                                  ? "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                                  : "bg-emerald-600 text-white hover:bg-emerald-700"
+                              }`}
+                            >
+                              {esPropia
+                                ? `👥 Postulantes (${postulantesDe(v.id).length})`
+                                : postulado
+                                ? "✓ Ya te postulaste"
+                                : "Postularme"}
+                            </button>
                           </div>
-                        )}
-                        <div className="p-3 flex flex-col flex-1">
-                          <p className="text-sm font-bold text-stone-900 truncate">
-                            {v.puesto}
-                          </p>
-                          <p className="text-xs text-stone-500 truncate mt-0.5">
-                            {v.empresa} · 📍 {v.ubicacion}
-                          </p>
-                          <p
-                            className={`text-lg font-extrabold mt-1.5 ${
-                              v.salario ? "text-stone-900" : "text-stone-400"
-                            }`}
-                          >
-                            {v.salario || "A convenir"}
-                          </p>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setVacanteDetalle(v);
-                            }}
-                            className="mt-auto pt-2 block w-full text-center px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 rc-anim transition-colors"
-                          >
-                            Postularme
-                          </button>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1779,7 +1863,7 @@ export default function RegistroCandidatos() {
 
                     <div className="p-6">
                       <div className="flex items-start justify-between gap-3 mb-1">
-                        <h2 className="text-xl font-extrabold text-stone-900">
+                        <h2 className="rc-serif text-xl text-stone-900">
                           {vacanteDetalle.puesto}
                         </h2>
                         <button
@@ -1831,14 +1915,62 @@ export default function RegistroCandidatos() {
                         {vacanteDetalle.descripcion}
                       </p>
 
-                      <a
-                        href={`mailto:${vacanteDetalle.autorCorreo}?subject=${encodeURIComponent(
-                          "Postulación: " + vacanteDetalle.puesto
-                        )}`}
-                        className="block text-center px-6 py-3 rounded-lg bg-emerald-600 text-white font-bold hover:bg-emerald-700 rc-anim transition-colors"
-                      >
-                        Postularme
-                      </a>
+                      {vacanteDetalle.autorCorreo === sesion.correo ? (
+                        <div>
+                          <p className="rc-mono uppercase text-[11px] text-stone-400 mb-2">
+                            Postulantes ({postulantesDe(vacanteDetalle.id).length})
+                          </p>
+                          {postulantesDe(vacanteDetalle.id).length === 0 ? (
+                            <p className="text-sm text-stone-400 border border-dashed border-stone-300 rounded-lg px-4 py-6 text-center">
+                              Aún no hay postulantes.
+                            </p>
+                          ) : (
+                            <ul className="divide-y divide-stone-200 border border-stone-200 rounded-xl overflow-hidden">
+                              {postulantesDe(vacanteDetalle.id).map((p) => (
+                                <li
+                                  key={p.id}
+                                  className="px-4 py-2.5 flex items-center justify-between gap-3"
+                                >
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-stone-900 truncate">
+                                      {p.candidatoNombre}
+                                    </p>
+                                    <p className="text-xs text-stone-500 truncate">
+                                      {p.candidatoCorreo}
+                                    </p>
+                                  </div>
+                                  <span className="text-xs text-stone-400 shrink-0">
+                                    {p.fecha}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      ) : (
+                        <>
+                          {errorPostulacion && (
+                            <p className="mb-3 text-sm text-red-600">
+                              {errorPostulacion}
+                            </p>
+                          )}
+                          <button
+                            onClick={() => postularseAVacante(vacanteDetalle)}
+                            disabled={postulando || yaPostulado(vacanteDetalle.id)}
+                            className={`block w-full text-center px-6 py-3 rounded-full font-bold rc-anim transition-colors disabled:opacity-60 ${
+                              yaPostulado(vacanteDetalle.id)
+                                ? "bg-stone-100 text-stone-500"
+                                : "bg-emerald-600 text-white hover:bg-emerald-700"
+                            }`}
+                          >
+                            {yaPostulado(vacanteDetalle.id)
+                              ? "✓ Ya te postulaste"
+                              : postulando
+                              ? "Enviando…"
+                              : "Postularme"}
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1872,7 +2004,7 @@ export default function RegistroCandidatos() {
               <p className="rc-mono uppercase text-xs text-emerald-700 font-medium mb-1">
                 Camaron · Reclutador
               </p>
-              <h1 className="text-3xl font-extrabold tracking-tight">
+              <h1 className="rc-serif text-3xl tracking-tight">
                 Bandeja de postulantes
               </h1>
             </div>
@@ -1892,7 +2024,7 @@ export default function RegistroCandidatos() {
             {[
               ["", "Total", candidatos.length, "bg-stone-900 text-white"],
               ["pendiente", "Pendientes", conteo("pendiente"), "bg-amber-400 text-stone-900"],
-              ["aprobado", "Aprobados", conteo("aprobado"), "bg-emerald-600 text-white"],
+              ["aprobado", "Aprobados", conteo("aprobado"), "bg-green-600 text-white"],
               ["rechazado", "Rechazados", conteo("rechazado"), "bg-white border border-stone-200 text-stone-700"],
             ].map(([estado, texto, num, clase]) => (
               <button
@@ -1959,7 +2091,7 @@ export default function RegistroCandidatos() {
               onClick={() =>
                 setFiltro({ busqueda: "", provincia: "", area: "", estado: "" })
               }
-              className="px-4 py-3 rounded-lg border border-stone-300 text-stone-600 font-semibold hover:bg-stone-100 rc-anim transition-colors"
+              className="px-4 py-3 rounded-full border border-stone-300 text-stone-600 font-semibold hover:bg-stone-100 rc-anim transition-colors"
             >
               Limpiar filtros
             </button>
@@ -2021,13 +2153,13 @@ export default function RegistroCandidatos() {
 
             {/* ── Detalle del postulante ── */}
             {detalle ? (
-              <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden md:sticky md:top-6">
+              <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden md:sticky md:top-6">
                 <div className="bg-stone-900 text-white px-6 py-5 flex items-center justify-between">
                   <div className="min-w-0">
                     <p className="rc-mono uppercase text-[11px] text-emerald-400">
                       Postulante
                     </p>
-                    <h2 className="text-lg font-bold truncate">
+                    <h2 className="rc-serif text-lg truncate">
                       {detalle.nombre}
                     </h2>
                   </div>
@@ -2101,7 +2233,7 @@ export default function RegistroCandidatos() {
                     <button
                       onClick={() => cambiarEstado(detalle.id, "aprobado")}
                       disabled={enviandoCorreo === detalle.id}
-                      className="px-4 py-3 rounded-lg bg-emerald-600 text-white font-bold hover:bg-emerald-700 disabled:opacity-60 rc-anim transition-colors"
+                      className="px-4 py-3 rounded-full bg-green-600 text-white font-bold hover:bg-green-700 disabled:opacity-60 rc-anim transition-colors"
                     >
                       {enviandoCorreo === detalle.id
                         ? "Enviando correo…"
@@ -2109,7 +2241,7 @@ export default function RegistroCandidatos() {
                     </button>
                     <button
                       onClick={() => cambiarEstado(detalle.id, "rechazado")}
-                      className="px-4 py-3 rounded-lg border border-red-300 text-red-600 font-bold hover:bg-red-50 rc-anim transition-colors"
+                      className="px-4 py-3 rounded-full border border-red-300 text-red-600 font-bold hover:bg-red-50 rc-anim transition-colors"
                     >
                       ✕ Rechazar
                     </button>
@@ -2172,7 +2304,7 @@ export default function RegistroCandidatos() {
             <p className="rc-mono uppercase text-xs text-emerald-700 font-medium mb-1">
               Camaron
             </p>
-            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">
+            <h1 className="rc-serif text-3xl md:text-4xl tracking-tight">
               Crea tu perfil de candidato
             </h1>
           </div>
@@ -2202,7 +2334,7 @@ export default function RegistroCandidatos() {
                   i < paso
                     ? "bg-emerald-500"
                     : i === paso
-                    ? "bg-amber-400"
+                    ? "bg-stone-900"
                     : "bg-stone-300"
                 }`}
               />
@@ -2224,7 +2356,7 @@ export default function RegistroCandidatos() {
                         hecho
                           ? "bg-emerald-500 text-stone-900"
                           : activo
-                          ? "bg-amber-400 text-stone-900"
+                          ? "bg-white text-stone-900"
                           : "bg-stone-700 text-stone-400"
                       }`}
                     >
@@ -2270,11 +2402,11 @@ export default function RegistroCandidatos() {
           </aside>
 
           {/* ── Panel derecho: formulario del paso ── */}
-          <main className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6 md:p-10">
+          <main className="bg-white rounded-2xl border border-stone-200 p-6 md:p-10">
             <p className="rc-mono uppercase text-xs text-stone-400 mb-1">
               Paso {paso + 1} de {PASOS.length}
             </p>
-            <h2 className="text-2xl font-bold mb-6">{PASOS[paso].titulo}</h2>
+            <h2 className="rc-serif text-2xl mb-6">{PASOS[paso].titulo}</h2>
 
             {paso === 0 && (
               <>
@@ -2437,11 +2569,11 @@ export default function RegistroCandidatos() {
                         reflejos.
                       </div>
                     ) : (
-                      <div className="mt-2 rounded-lg bg-emerald-50 border border-emerald-300 px-4 py-3">
-                        <p className="text-sm font-semibold text-emerald-800 mb-1">
+                      <div className="mt-2 rounded-lg bg-green-50 border border-green-300 px-4 py-3">
+                        <p className="text-sm font-semibold text-green-800 mb-1">
                           ✅ Cédula leída correctamente
                         </p>
-                        <p className="text-sm text-emerald-700">
+                        <p className="text-sm text-green-700">
                           {analisis.numero && (
                             <>
                               Número: <strong>{analisis.numero}</strong>
@@ -2471,7 +2603,7 @@ export default function RegistroCandidatos() {
                               if (analisis.nombre)
                                 set("nombre", analisis.nombre);
                             }}
-                            className="mt-2 text-sm font-semibold text-emerald-700 hover:underline"
+                            className="mt-2 text-sm font-semibold text-green-700 hover:underline"
                           >
                             Usar estos datos en el formulario
                           </button>
@@ -2666,7 +2798,7 @@ export default function RegistroCandidatos() {
               <button
                 onClick={anterior}
                 disabled={paso === 0}
-                className={`px-5 py-3 rounded-lg font-semibold rc-anim transition-colors ${
+                className={`px-5 py-3 rounded-full font-semibold rc-anim transition-colors ${
                   paso === 0
                     ? "text-stone-300 cursor-not-allowed"
                     : "text-stone-600 hover:bg-stone-100"
@@ -2677,7 +2809,7 @@ export default function RegistroCandidatos() {
               {paso < PASOS.length - 1 ? (
                 <button
                   onClick={siguiente}
-                  className="flex-1 sm:flex-none px-6 py-3 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 rc-anim transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+                  className="flex-1 sm:flex-none px-6 py-3 rounded-full bg-emerald-600 text-white font-semibold hover:bg-emerald-700 rc-anim transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
                 >
                   Continuar →
                 </button>
@@ -2685,7 +2817,7 @@ export default function RegistroCandidatos() {
                 <button
                   onClick={enviarRegistro}
                   disabled={enviandoRegistro}
-                  className="flex-1 sm:flex-none px-6 py-3 rounded-lg bg-amber-400 text-stone-900 font-bold hover:bg-amber-500 disabled:opacity-60 rc-anim transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+                  className="flex-1 sm:flex-none px-6 py-3 rounded-full bg-emerald-600 text-white font-bold hover:bg-emerald-700 disabled:opacity-60 rc-anim transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
                 >
                   {enviandoRegistro ? "Enviando…" : "Enviar registro"}
                 </button>
